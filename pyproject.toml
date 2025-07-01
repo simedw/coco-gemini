@@ -1,0 +1,33 @@
+[project]
+name = "coco-gemini-eval"
+version = "0.1.0"
+description = "COCO evaluation project with Gemini using FiftyOne"
+authors = [
+    {name = "User", email = "user@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "fiftyone>=0.24.0",
+    "pycocotools>=2.0.7",
+    "pillow>=9.0.0",
+    "numpy>=1.21.0",
+    "matplotlib>=3.5.0",
+    "tqdm>=4.64.0",
+    "python-dotenv>=1.0.0",
+    "opencv-python>=4.8.0",
+    "google-genai>=0.3.0",
+    "pydantic>=2.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "jupyter>=1.0.0",
+    "ipykernel>=6.0.0",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "jupyter>=1.0.0",
+    "ipykernel>=6.0.0",
+] 
