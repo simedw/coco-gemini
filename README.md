@@ -30,31 +30,113 @@ Ensure you’re using Python ≥ 3.9
   ```
 
 ## Running 
+
+### Basic Usage
 Evaluate Gemini on 100 random images from COCO:
-```
-uv run python coco_eval_script.py --max-images 100 --max-workers 10 --structured-output --ui
+```bash
+uv run python coco_eval_script.py --max-images 100 --max-workers 10 --model gemini-2.5-pro --ui
 ```
 
-| Parameter       | Description                                          | Default     |
-| --------------- | ---------------------------------------------------- | ----------- |
-| `--max-images`  | Number of images to evaluate (max 5000 available)    | `50`       |
-| `--max-workers` | Concurrent Gemini API requests                       | `10`        |
-| `--ui`          | Launch FiftyOne's web UI to visually compare results | Not Enabled |
+### Available Parameters
 
+| Parameter            | Description                                          | Default              |
+| -------------------- | ---------------------------------------------------- | -------------------- |
+| `--max-images`       | Number of images to evaluate (max 5000 available)    | `50`                |
+| `--model`            | Gemini model to use                                  | `gemini-2.5-flash`   |
+| `--thinking-budget`  | Thinking budget for Gemini models (0 to disable)    | `1024`              |
+| `--max-workers`      | Concurrent Gemini API requests                       | `10`                |
+| `--structured-output`| Use structured output for better reliability         | `False`             |
+| `--ui`               | Launch FiftyOne's web UI to visually compare results | `False`             |
+
+### Model Options
+- `gemini-2.5-pro` - Most capable, slower
+- `gemini-2.5-flash` - Good balance of speed and capability  
+- `gemini-2.5-flash-8b` - Fastest, lower capability
+
+### Examples
+```bash
+# Evaluate with different models
+uv run python coco_eval_script.py --model gemini-2.5-pro --max-images 50
+uv run python coco_eval_script.py --model gemini-2.5-flash --thinking-budget 0 --max-images 100
+
+# Use structured output for better reliability
+uv run python coco_eval_script.py --structured-output --max-images 50
+
+# Run with visualization
+uv run python coco_eval_script.py --max-images 100 --ui
+```
+
+## Runs Management
+
+Each evaluation creates a timestamped run directory under `runs/` containing:
+- `config.json` - Run configuration and parameters
+- `ground_truth.json` - COCO ground truth annotations
+- `predictions.json` - Model predictions
+- `results.json` - Evaluation metrics and performance statistics
+
+### Viewing Past Runs
+
+```bash
+# List all available runs
+python view_run.py --list
+
+# Visualize the most recent run
+python view_run.py --latest
+
+# Visualize a specific run
+python view_run.py runs/gemini-2.5-pro_20241230_143022
+```
+
+No more manual file cleanup - each run is self-contained!
+
+## Matrix Evaluation
+
+Run systematic comparisons across multiple models and configurations:
+
+```bash
+# Run full matrix (3 models × 2 modes = 6 evaluations)
+python run_matrix.py --max-images 100
+
+# Run specific models or modes
+python run_matrix.py --models flash pro --modes structured
+python run_matrix.py --models flash-8b --max-images 50
+
+# Show what would be executed without running
+python run_matrix.py --dry-run
+
+# View summary of all matrix runs
+python run_matrix.py --summary
+```
+
+The matrix evaluation runs all combinations of:
+- **Models**: 
+  - `gemini-2.5-flash` (thinking budgets: 0, 1024)
+  - `gemini-2.5-pro` (thinking budget: 1024 only)
+  - `gemini-2.5-flash-lite-preview-06-17` (thinking budgets: 0, 1024)
+- **Modes**: `structured`, `unstructured`
+
+Total combinations: **10 runs** (flash: 4, pro: 2, lite: 4)
+
+Results are automatically collected and displayed in a comparison table with thinking budget details.
 
 ## Results 
 
-1000 random samples
+5000 (full validation set)
 
-| Model                     | Configuration       | mAP (IoU=0.50:0.95) |
-| ------------------------- | ------------------- | ------------------- |
-| **Gemini 2.5 Pro**        | Unstructured output | 0.319               |
-| **Gemini 2.5 Pro**        | Structured output   | **0.365**           |
-| **Gemini 2.5 Flash**      | Unstructured output | 0.300               |
-| **Gemini 2.5 Flash**      | Structured output   | 0.254               |
-| **Gemini 2.5 Flash Lite** | Unstructured output | 0.217               |
-| **Gemini 2.5 Flash Lite** | Structured output   | 0.185               |
+## 📊 Matrix Evaluation Summary (5000 images)
 
+| Model      | Think | Mode         | mAP   | AP@0.5 | Success    | Avg Time |
+|------------|-------|--------------|-------|--------|------------|----------|
+| flash      | 0     | structured   | 0.224 | 0.381  | 4953/5000  | 0.18s    |
+| flash      | 0     | unstructured | 0.261 | 0.417  | 4943/5000  | 0.20s    |
+| flash      | 1024  | structured   | 0.160 | 0.311  | 4977/5000  | 0.27s    |
+| flash      | 1024  | unstructured | 0.161 | 0.319  | 4981/5000  | 0.28s    |
+| pro        | 1024  | structured   | **0.340** | 0.517  | 4994/5000  | 0.46s    |
+| pro        | 1024  | unstructured | 0.288 | 0.438  | 4975/5000  | 0.47s    |
+| flash-lite | 0     | structured   | 0.156 | 0.279  | 4665/5000  | 0.37s    |
+| flash-lite | 0     | unstructured | 0.211 | 0.338  | 4784/5000  | 0.23s    |
+| flash-lite | 1024  | structured   | 0.140 | 0.273  | 4832/5000  | 0.27s    |
+| flash-lite | 1024  | unstructured | 0.215 | 0.364  | 4886/5000  | 0.24s    |
 
 
 ### Gemini 2.5 Flash

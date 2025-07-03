@@ -6,6 +6,8 @@ COCO Evaluation Script with FiftyOne and Gemini Predictions
 import os
 import json
 import argparse
+import time
+from datetime import datetime
 from pathlib import Path
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
@@ -13,14 +15,14 @@ import fiftyone as fo
 import fiftyone.zoo as foz
 import fiftyone.types as fot
 from PIL import Image
+import sys
+from io import StringIO
 
 # Import our modular components
 from gemini_model import GeminiDetector
 
 # --- CONFIGURATION ---
 MAX_IMAGES = 50  # Keep it small for testing
-GT_PATH_TEMPLATE = "coco_gt_{}.json"
-PRED_PATH_TEMPLATE = "gemini_predictions_{}.json"
 
 
 def load_coco_class_names():
@@ -34,6 +36,69 @@ def load_coco_class_names():
         raise FileNotFoundError(
             "coco_classes.json not found. Please ensure it's in the current directory."
         )
+
+
+def create_run_directory(model_name: str) -> Path:
+    """Create a timestamped run directory."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_name = f"{model_name.replace('/', '_')}_{timestamp}"
+    run_dir = Path("runs") / run_name
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
+
+
+def save_config(run_dir: Path, args: argparse.Namespace, detector_info: dict):
+    """Save run configuration to config.json."""
+    config = {
+        "timestamp": datetime.now().isoformat(),
+        "model_name": args.model,
+        "thinking_budget": args.thinking_budget,
+        "max_images": args.max_images,
+        "max_workers": args.max_workers,
+        "preprocess_images": args.preprocess_images,
+        "structured_output": args.structured_output,
+        "detector_info": detector_info
+    }
+    
+    config_path = run_dir / "config.json"
+    with open(config_path, 'w') as f:
+        json.dump(config, f, indent=2)
+    
+    return config_path
+
+
+def capture_coco_evaluation(coco_gt, coco_dt):
+    """Capture COCO evaluation metrics and return as structured data."""
+    evaluator = COCOeval(coco_gt, coco_dt, iouType="bbox")
+    evaluator.evaluate()
+    evaluator.accumulate()
+    
+    # Capture the summarize output
+    old_stdout = sys.stdout
+    sys.stdout = captured_output = StringIO()
+    evaluator.summarize()
+    sys.stdout = old_stdout
+    summary_text = captured_output.getvalue()
+    
+    # Extract metrics from evaluator.stats
+    # evaluator.stats contains [AP@0.5:0.95, AP@0.5, AP@0.75, AP@0.5:0.95 small, AP@0.5:0.95 medium, AP@0.5:0.95 large, AR@0.5:0.95 max1, AR@0.5:0.95 max10, AR@0.5:0.95 max100, AR@0.5:0.95 small, AR@0.5:0.95 medium, AR@0.5:0.95 large]
+    metrics = {
+        "ap_50_95": evaluator.stats[0] if len(evaluator.stats) > 0 else None,
+        "ap_50": evaluator.stats[1] if len(evaluator.stats) > 1 else None,
+        "ap_75": evaluator.stats[2] if len(evaluator.stats) > 2 else None,
+        "ap_50_95_small": evaluator.stats[3] if len(evaluator.stats) > 3 else None,
+        "ap_50_95_medium": evaluator.stats[4] if len(evaluator.stats) > 4 else None,
+        "ap_50_95_large": evaluator.stats[5] if len(evaluator.stats) > 5 else None,
+        "ar_50_95_max1": evaluator.stats[6] if len(evaluator.stats) > 6 else None,
+        "ar_50_95_max10": evaluator.stats[7] if len(evaluator.stats) > 7 else None,
+        "ar_50_95_max100": evaluator.stats[8] if len(evaluator.stats) > 8 else None,
+        "ar_50_95_small": evaluator.stats[9] if len(evaluator.stats) > 9 else None,
+        "ar_50_95_medium": evaluator.stats[10] if len(evaluator.stats) > 10 else None,
+        "ar_50_95_large": evaluator.stats[11] if len(evaluator.stats) > 11 else None,
+        "summary_text": summary_text
+    }
+    
+    return metrics
 
 
 def export_ground_truth_with_correct_ids(dataset, gt_path, coco_class_names):
@@ -131,10 +196,13 @@ def export_ground_truth_with_correct_ids(dataset, gt_path, coco_class_names):
 def main(args):
     print("🚀 Starting COCO Evaluation Script")
     
-    # Use args for configuration
-    max_images = args.max_images or MAX_IMAGES
-    gt_path = args.gt_path or GT_PATH_TEMPLATE.format(max_images)
-    pred_path = args.pred_path or PRED_PATH_TEMPLATE.format(max_images)
+    # Create run directory
+    run_dir = create_run_directory(args.model)
+    print(f"📁 Created run directory: {run_dir}")
+    
+    # Set up file paths within the run directory
+    gt_path = run_dir / "ground_truth.json"
+    pred_path = run_dir / "predictions.json"
     
     print(f"📁 Using files: {gt_path} | {pred_path}")
     
@@ -147,34 +215,38 @@ def main(args):
     try:
         detector = GeminiDetector(
             api_key=args.api_key, 
+            model_name=args.model,
+            thinking_budget=args.thinking_budget,
             max_workers=args.max_workers,
             preprocess_images=args.preprocess_images,
             use_structured_output=args.structured_output
         )
-        print(f"✅ Gemini detector initialized: {detector.get_model_info()}")
+        detector_info = detector.get_model_info()
+        print(f"✅ Gemini detector initialized: {detector_info}")
         print(f"🔧 Parallel processing: {args.max_workers} workers")
         print(f"📐 Image preprocessing: {'enabled' if args.preprocess_images else 'disabled'}")
+        print(f"🧠 Thinking budget: {args.thinking_budget}")
     except Exception as e:
         print(f"❌ Failed to initialize Gemini detector: {e}")
         print("💡 Make sure you have set GEMINI_API_KEY environment variable or use --api-key")
         print("💡 Install Gemini dependencies with: uv sync --extra gemini")
         return
     
+    # Save configuration
+    config_path = save_config(run_dir, args, detector_info)
+    print(f"💾 Saved configuration to {config_path}")
+    
     # --- STEP 1: Load COCO Validation Set ---
-    print(f"📥 Loading COCO validation dataset (max {max_images} images)...")
+    print(f"📥 Loading COCO validation dataset (max {args.max_images} images)...")
     dataset = foz.load_zoo_dataset(
-        "coco-2017", split="validation", max_samples=max_images, shuffle=True
+        "coco-2017", split="validation", max_samples=args.max_images, shuffle=True
     )
     print(f"✅ Loaded {len(dataset)} images")
 
     # --- STEP 2: Export Ground Truth Annotations ---
     print("📝 Exporting ground truth annotations...")
-    if not Path(gt_path).exists():
-        # Custom export to maintain proper COCO category IDs
-        export_ground_truth_with_correct_ids(dataset, gt_path, COCO_CLASS_NAMES)
-        print(f"✅ Ground truth exported to {gt_path}")
-    else:
-        print(f"✅ Ground truth file {gt_path} already exists")
+    export_ground_truth_with_correct_ids(dataset, gt_path, COCO_CLASS_NAMES)
+    print(f"✅ Ground truth exported to {gt_path}")
 
     # --- STEP 3: Run Gemini Object Detection ---
     print("🤖 Running Gemini object detection...")
@@ -182,14 +254,33 @@ def main(args):
     # Prepare image data for parallel processing
     image_data = [(sample.filepath, i + 1) for i, sample in enumerate(dataset)]
     
+    # Track timing
+    start_time = time.time()
+    
     # Run parallel detection
     all_preds, stats = detector.detect_parallel(image_data)
+    
+    # Calculate timing
+    end_time = time.time()
+    total_time = end_time - start_time
+    avg_time_per_image = total_time / len(image_data) if len(image_data) > 0 else 0
+    
+    # Enhanced statistics
+    enhanced_stats = {
+        **stats,
+        "total_time_seconds": total_time,
+        "average_time_per_image": avg_time_per_image,
+        "images_per_second": len(image_data) / total_time if total_time > 0 else 0
+    }
     
     # Print statistics
     print(f"\n📊 Detection Statistics:")
     print(f"  ✅ Successful images: {stats['successful_images']}/{stats['total_images']}")
     print(f"  ❌ Failed images: {stats['failed_images']}")
     print(f"  🎯 Total predictions: {stats['total_predictions']}")
+    print(f"  ⏱️  Total time: {total_time:.2f} seconds")
+    print(f"  ⚡ Average time per image: {avg_time_per_image:.2f} seconds")
+    print(f"  🔥 Images per second: {enhanced_stats['images_per_second']:.2f}")
     
     if stats['failed_images'] > 0:
         print(f"  ⚠️  Failed image IDs: {stats['failed_image_ids'][:10]}{'...' if len(stats['failed_image_ids']) > 10 else ''}")
@@ -205,18 +296,30 @@ def main(args):
 
     # --- STEP 4: Evaluate using pycocotools ---
     print("📊 Evaluating predictions using pycocotools...")
-    coco_gt = COCO(gt_path)
-    coco_dt = coco_gt.loadRes(pred_path)
+    coco_gt = COCO(str(gt_path))
+    coco_dt = coco_gt.loadRes(str(pred_path))
 
-    evaluator = COCOeval(coco_gt, coco_dt, iouType="bbox")
-    evaluator.evaluate()
-    evaluator.accumulate()
+    # Capture evaluation metrics
+    metrics = capture_coco_evaluation(coco_gt, coco_dt)
     
     print("\n" + "="*50)
     print("🏆 EVALUATION RESULTS")
     print("="*50)
-    evaluator.summarize()
+    print(metrics['summary_text'])
     print("="*50)
+    
+    # Save results
+    results = {
+        "metrics": metrics,
+        "statistics": enhanced_stats,
+        "evaluation_completed_at": datetime.now().isoformat()
+    }
+    
+    results_path = run_dir / "results.json"
+    with open(results_path, 'w') as f:
+        json.dump(results, f, indent=2)
+    
+    print(f"💾 Results saved to {results_path}")
 
     # --- STEP 5: Add predictions to dataset for visualization ---
     print("📋 Adding predictions to dataset for visualization...")
@@ -274,8 +377,10 @@ def main(args):
         session.wait()
     else:
         print("\n✅ Evaluation completed successfully!")
+        print(f"📁 All results saved to: {run_dir}")
         print("💡 Use --ui flag to launch FiftyOne visualization")
-        print("💡 Dataset now contains both 'ground_truth' and 'gemini_predictions' fields")
+        print(f"💡 Use: python view_run.py {run_dir} to visualize this run later")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -285,22 +390,22 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max-images",
         type=int,
-        default=None,
+        default=MAX_IMAGES,
         help=f"Maximum number of images to evaluate (default: {MAX_IMAGES})"
     )
     
     parser.add_argument(
-        "--gt-path",
+        "--model",
         type=str,
-        default=None,
-        help="Path to ground truth COCO JSON file (default: coco_gt_<max_images>.json)"
+        default="gemini-2.5-flash",
+        help="Gemini model to use (default: gemini-2.5-flash). Options: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-8b"
     )
     
     parser.add_argument(
-        "--pred-path",
-        type=str,
-        default=None,
-        help="Path to predictions JSON file (default: gemini_predictions_<max_images>.json)"
+        "--thinking-budget",
+        type=int,
+        default=1024,
+        help="Thinking budget for Gemini models (default: 1024). Set to 0 to disable thinking."
     )
     
     parser.add_argument(

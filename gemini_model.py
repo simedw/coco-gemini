@@ -135,13 +135,14 @@ class GeminiDetector:
     Object detector using Google's Gemini Vision API with parallel processing support.
     """
     
-    def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-2.5-flash-lite-preview-06-17", max_workers: int = 10, preprocess_images: bool = True, use_structured_output: bool = False):
+    def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-2.5-pro", thinking_budget: int = 1024, max_workers: int = 10, preprocess_images: bool = True, use_structured_output: bool = False):
         """
         Initialize the Gemini detector.
         
         Args:
             api_key: Gemini API key. If None, will try to get from GEMINI_API_KEY env var.
             model_name: Gemini model to use for detection.
+            thinking_budget: Thinking budget for Gemini models (default: 1024). Set to 0 to disable thinking.
             max_workers: Maximum number of parallel API calls.
             preprocess_images: Whether to resize/compress images like HTML version (default: True).
             use_structured_output: Whether to use Gemini's structured output with COCO class enums (default: False).
@@ -153,6 +154,7 @@ class GeminiDetector:
             raise ImportError("Pydantic required for structured output. Install with: uv add pydantic")
         
         self.model_name = model_name
+        self.thinking_budget = thinking_budget
         self.max_workers = max_workers
         self.preprocess_images = preprocess_images
         self.use_structured_output = use_structured_output
@@ -175,18 +177,15 @@ class GeminiDetector:
         self.prompt = self._create_prompt()
         
         # Configure response format
-        # https://ai.google.dev/gemini-api/docs/image-understanding recommends setting thinking_budget to 0 for object detection for models that supports it.
-        thinking_budget = 0
-        
         if self.use_structured_output:
             self.config = types.GenerateContentConfig(
-                thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
+                thinking_config=types.ThinkingConfig(thinking_budget=self.thinking_budget),
                 response_mime_type="application/json",
                 response_schema=DetectionResponse
             )
         else:
             self.config = types.GenerateContentConfig(
-                thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
+                thinking_config=types.ThinkingConfig(thinking_budget=self.thinking_budget),
                 response_mime_type="application/json"
             )
 
@@ -425,13 +424,12 @@ Return as JSON array:
             # Validate required fields
             if "label" not in detection:
                 raise ValueError("Missing 'label' field")
-            if "confidence" not in detection:
-                raise ValueError("Missing 'confidence' field")
             if "box_2d" not in detection:
                 raise ValueError("Missing 'box_2d' field")
             
             label = detection["label"].lower()
-            confidence = detection["confidence"]
+            # gemini pro refuses to return confidence levels
+            confidence = detection.get("confidence", 0.5)
             box_2d = detection["box_2d"]
             
             # Validate box_2d format
@@ -498,6 +496,7 @@ Return as JSON array:
         """Get model information for logging."""
         return {
             "model_name": self.model_name,
+            "thinking_budget": self.thinking_budget,
             "api_provider": "Google Gemini",
             "coco_classes_count": len(self.coco_classes),
             "max_workers": self.max_workers,
