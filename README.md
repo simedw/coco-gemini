@@ -127,16 +127,17 @@ Results are automatically collected and displayed in a comparison table with thi
 
 | Model      | Think | Mode         | mAP   | AP@0.5 | Success    | Avg Time |
 |------------|-------|--------------|-------|--------|------------|----------|
-| flash      | 0     | structured   | 0.224 | 0.381  | 4953/5000  | 0.18s    |
-| flash      | 0     | unstructured | 0.261 | 0.417  | 4943/5000  | 0.20s    |
-| flash      | 1024  | structured   | 0.160 | 0.311  | 4977/5000  | 0.27s    |
-| flash      | 1024  | unstructured | 0.161 | 0.319  | 4981/5000  | 0.28s    |
-| pro        | 1024  | structured   | **0.340** | 0.517  | 4994/5000  | 0.46s    |
-| pro        | 1024  | unstructured | 0.288 | 0.438  | 4975/5000  | 0.47s    |
-| flash-lite | 0     | structured   | 0.156 | 0.279  | 4665/5000  | 0.37s    |
-| flash-lite | 0     | unstructured | 0.211 | 0.338  | 4784/5000  | 0.23s    |
-| flash-lite | 1024  | structured   | 0.140 | 0.273  | 4832/5000  | 0.27s    |
-| flash-lite | 1024  | unstructured | 0.215 | 0.364  | 4886/5000  | 0.24s    |
+| 2.5-flash      | 0     | structured   | 0.224 | 0.381  | 4953/5000  | 0.18s    |
+| 2.5-flash      | 0     | unstructured | 0.261 | 0.417  | 4943/5000  | 0.20s    |
+| 2.5-flash      | 1024  | structured   | 0.160 | 0.311  | 4977/5000  | 0.27s    |
+| 2.5-flash      | 1024  | unstructured | 0.161 | 0.319  | 4981/5000  | 0.28s    |
+| 2.5-pro        | 1024  | structured   | **0.340** | 0.517  | 4994/5000  | 0.46s    |
+| 2.5-pro        | 1024  | unstructured | 0.288 | 0.438  | 4975/5000  | 0.47s    |
+| 2.5-flash-lite | 0     | structured   | 0.156 | 0.279  | 4665/5000  | 0.37s    |
+| 2.5-flash-lite | 0     | unstructured | 0.211 | 0.338  | 4784/5000  | 0.23s    |
+| 2.5-flash-lite | 1024  | structured   | 0.140 | 0.273  | 4832/5000  | 0.27s    |
+| 2.5-flash-lite | 1024  | unstructured | 0.215 | 0.364  | 4886/5000  | 0.24s    |
+| 3-pro-preview | 1024 | structured | **0.407** | **0.582** | 4991/5000 | 3.63s | 
 
 
 ### Gemini 2.5 Flash
