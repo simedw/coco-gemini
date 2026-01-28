@@ -18,6 +18,20 @@ from PIL import Image
 import sys
 from io import StringIO
 
+# Load environment variables from .env file if it exists
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # dotenv not available, try to load .env manually
+    if os.path.exists('.env'):
+        with open('.env') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    os.environ.setdefault(key.strip(), value.strip())
+
 # Import our modular components
 from gemini_model import GeminiDetector
 
@@ -57,6 +71,7 @@ def save_config(run_dir: Path, args: argparse.Namespace, detector_info: dict):
         "max_workers": args.max_workers,
         "preprocess_images": args.preprocess_images,
         "structured_output": args.structured_output,
+        "code_execution": args.code_execution,
         "detector_info": detector_info
     }
     
@@ -214,12 +229,13 @@ def main(args):
     print("🤖 Initializing Gemini detector...")
     try:
         detector = GeminiDetector(
-            api_key=args.api_key, 
+            api_key=args.api_key,
             model_name=args.model,
             thinking_budget=args.thinking_budget,
             max_workers=args.max_workers,
             preprocess_images=args.preprocess_images,
-            use_structured_output=args.structured_output
+            use_structured_output=args.structured_output,
+            use_code_execution=args.code_execution
         )
         detector_info = detector.get_model_info()
         print(f"✅ Gemini detector initialized: {detector_info}")
@@ -439,7 +455,13 @@ if __name__ == "__main__":
         action="store_true",
         help="Use Gemini's structured output with COCO class enums for better reliability"
     )
-    
+
+    parser.add_argument(
+        "--code-execution",
+        action="store_true",
+        help="Enable code execution tools for iterative image analysis"
+    )
+
     args = parser.parse_args()
     # Convert --no-preprocess to preprocess_images boolean
     args.preprocess_images = not args.no_preprocess

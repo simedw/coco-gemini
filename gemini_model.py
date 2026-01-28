@@ -135,10 +135,10 @@ class GeminiDetector:
     Object detector using Google's Gemini Vision API with parallel processing support.
     """
     
-    def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-2.5-pro", thinking_budget: int = 1024, max_workers: int = 10, preprocess_images: bool = True, use_structured_output: bool = False):
+    def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-2.5-pro", thinking_budget: int = 1024, max_workers: int = 10, preprocess_images: bool = True, use_structured_output: bool = False, use_code_execution: bool = False):
         """
         Initialize the Gemini detector.
-        
+
         Args:
             api_key: Gemini API key. If None, will try to get from GEMINI_API_KEY env var.
             model_name: Gemini model to use for detection.
@@ -146,6 +146,7 @@ class GeminiDetector:
             max_workers: Maximum number of parallel API calls.
             preprocess_images: Whether to resize/compress images like HTML version (default: True).
             use_structured_output: Whether to use Gemini's structured output with COCO class enums (default: False).
+            use_code_execution: Enable code execution tools for iterative image analysis (default: False).
         """
         if not GEMINI_AVAILABLE:
             raise ImportError("Google Gemini API not available. Install with: uv add google-genai")
@@ -158,6 +159,7 @@ class GeminiDetector:
         self.max_workers = max_workers
         self.preprocess_images = preprocess_images
         self.use_structured_output = use_structured_output
+        self.use_code_execution = use_code_execution
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         
         if not self.api_key:
@@ -176,17 +178,24 @@ class GeminiDetector:
         # Create the prompt with COCO class names
         self.prompt = self._create_prompt()
         
+        # Configure code execution tools
+        tools = None
+        if self.use_code_execution:
+            tools = [types.Tool(code_execution=types.ToolCodeExecution())]
+
         # Configure response format
         if self.use_structured_output:
             self.config = types.GenerateContentConfig(
                 thinking_config=types.ThinkingConfig(thinking_budget=self.thinking_budget),
                 response_mime_type="application/json",
-                response_schema=DetectionResponse
+                response_schema=DetectionResponse,
+                tools=tools
             )
         else:
             self.config = types.GenerateContentConfig(
                 thinking_config=types.ThinkingConfig(thinking_budget=self.thinking_budget),
-                response_mime_type="application/json"
+                response_mime_type="application/json",
+                tools=tools
             )
 
         # Thread lock for thread-safe printing
@@ -501,7 +510,8 @@ Return as JSON array:
             "coco_classes_count": len(self.coco_classes),
             "max_workers": self.max_workers,
             "preprocess_images": self.preprocess_images,
-            "structured_output": self.use_structured_output
+            "structured_output": self.use_structured_output,
+            "code_execution": self.use_code_execution
         }
 
 

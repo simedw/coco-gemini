@@ -17,11 +17,15 @@ MODELS_CONFIG = {
         "thinking_budgets": [0, 1024]
     },
     "gemini-2.5-pro": {
-        "name": "gemini-2.5-pro", 
+        "name": "gemini-2.5-pro",
         "thinking_budgets": [1024]  # 0 will cause an error for pro
     },
     "gemini-2.5-flash-lite-preview-06-17": {
         "name": "gemini-2.5-flash-lite-preview-06-17",
+        "thinking_budgets": [0, 1024]
+    },
+    "gemini-3-flash-preview": {
+        "name": "gemini-3-flash-preview",
         "thinking_budgets": [0, 1024]
     }
 }
@@ -31,28 +35,36 @@ STRUCTURED_OPTIONS = [
     {"flag": "--structured-output", "name": "structured"}
 ]
 
+CODE_EXECUTION_OPTIONS = [
+    {"flag": "", "name": "no_code_exec"},
+    {"flag": "--code-execution", "name": "code_exec"}
+]
+
 DEFAULT_PARAMS = {
     "max_images": 5000,
     "max_workers": 30
 }
 
-def run_evaluation(model, thinking_budget, structured_config, params):
+def run_evaluation(model, thinking_budget, structured_config, code_exec_config, params):
     """Run a single evaluation with the given configuration."""
     print(f"\n{'='*60}")
-    print(f"🚀 Starting evaluation: {model} (thinking: {thinking_budget}, {structured_config['name']})")
+    print(f"🚀 Starting evaluation: {model} (thinking: {thinking_budget}, {structured_config['name']}, {code_exec_config['name']})")
     print(f"{'='*60}")
-    
+
     # Build command
     cmd = [
-        "python", "coco_eval_script.py",
+        "uv", "run", "python", "coco_eval_script.py",
         "--model", model,
         "--max-images", str(params["max_images"]),
         "--max-workers", str(params["max_workers"]),
         "--thinking-budget", str(thinking_budget)
     ]
-    
+
     if structured_config["flag"]:
         cmd.append(structured_config["flag"])
+
+    if code_exec_config["flag"]:
+        cmd.append(code_exec_config["flag"])
     
     print(f"📋 Command: {' '.join(cmd)}")
     
@@ -119,6 +131,7 @@ def collect_results():
                 "run_name": run_dir.name,
                 "model": config.get("model_name", "unknown"),
                 "structured": config.get("structured_output", False),
+                "code_execution": config.get("code_execution", False),
                 "max_images": config.get("max_images", 0),
                 "thinking_budget": config.get("thinking_budget", 0),
                 "timestamp": config.get("timestamp", ""),
@@ -142,46 +155,50 @@ def print_summary_table(results):
     print("📊 MATRIX EVALUATION SUMMARY")
     print("="*95)
     
-    # Group by model, thinking budget, and structured mode
+    # Group by model, thinking budget, structured mode, and code execution
     matrix_results = {}
     for result in results:
         model = result["model"]
         thinking = result["thinking_budget"]
         structured = "structured" if result["structured"] else "unstructured"
-        key = f"{model}_{thinking}_{structured}"
-        
+        code_exec = "code_exec" if result.get("code_execution", False) else "no_code_exec"
+        key = f"{model}_{thinking}_{structured}_{code_exec}"
+
         if key not in matrix_results:
             matrix_results[key] = result
         else:
             # Keep the most recent one
             if result["timestamp"] > matrix_results[key]["timestamp"]:
                 matrix_results[key] = result
-    
+
     # Print table header
-    print(f"{'Model':<25} {'Think':<6} {'Mode':<12} {'mAP':<8} {'AP@0.5':<8} {'Success':<10} {'Avg Time':<10}")
-    print("-" * 95)
+    print(f"{'Model':<25} {'Think':<6} {'Mode':<12} {'CodeExec':<10} {'mAP':<8} {'AP@0.5':<8} {'Success':<10} {'Avg Time':<10}")
+    print("-" * 110)
     
     # Print results
     for model_key, model_config in MODELS_CONFIG.items():
         model = model_config["name"]
         for thinking_budget in model_config["thinking_budgets"]:
             for mode in ["structured", "unstructured"]:
-                key = f"{model}_{thinking_budget}_{mode}"
-                if key in matrix_results:
-                    r = matrix_results[key]
-                    mAP = f"{r['ap_50_95']:.3f}" if r['ap_50_95'] is not None else "N/A"
-                    ap50 = f"{r['ap_50']:.3f}" if r['ap_50'] is not None else "N/A"
-                    success_rate = f"{r['successful_images']}/{r['successful_images'] + r['failed_images']}"
-                    avg_time = f"{r['avg_time_per_image']:.2f}s" if r['avg_time_per_image'] > 0 else "N/A"
-                    
-                    # Shorten model name for display
-                    display_model = model.replace("gemini-2.5-", "").replace("-preview-06-17", "")
-                    print(f"{display_model:<25} {thinking_budget:<6} {mode:<12} {mAP:<8} {ap50:<8} {success_rate:<10} {avg_time:<10}")
-                else:
-                    display_model = model.replace("gemini-2.5-", "").replace("-preview-06-17", "")
-                    print(f"{display_model:<25} {thinking_budget:<6} {mode:<12} {'N/A':<8} {'N/A':<8} {'N/A':<10} {'N/A':<10}")
-    
-    print("="*95)
+                for code_exec in ["no_code_exec", "code_exec"]:
+                    key = f"{model}_{thinking_budget}_{mode}_{code_exec}"
+                    if key in matrix_results:
+                        r = matrix_results[key]
+                        mAP = f"{r['ap_50_95']:.3f}" if r['ap_50_95'] is not None else "N/A"
+                        ap50 = f"{r['ap_50']:.3f}" if r['ap_50'] is not None else "N/A"
+                        success_rate = f"{r['successful_images']}/{r['successful_images'] + r['failed_images']}"
+                        avg_time = f"{r['avg_time_per_image']:.2f}s" if r['avg_time_per_image'] > 0 else "N/A"
+
+                        # Shorten model name for display
+                        display_model = model.replace("gemini-2.5-", "").replace("gemini-3-", "g3-").replace("-preview-06-17", "").replace("-preview", "")
+                        code_exec_display = "yes" if code_exec == "code_exec" else "no"
+                        print(f"{display_model:<25} {thinking_budget:<6} {mode:<12} {code_exec_display:<10} {mAP:<8} {ap50:<8} {success_rate:<10} {avg_time:<10}")
+                    else:
+                        display_model = model.replace("gemini-2.5-", "").replace("gemini-3-", "g3-").replace("-preview-06-17", "").replace("-preview", "")
+                        code_exec_display = "yes" if code_exec == "code_exec" else "no"
+                        print(f"{display_model:<25} {thinking_budget:<6} {mode:<12} {code_exec_display:<10} {'N/A':<8} {'N/A':<8} {'N/A':<10} {'N/A':<10}")
+
+    print("="*110)
 
 def main():
     import argparse
@@ -217,7 +234,7 @@ Examples:
     parser.add_argument(
         "--models",
         nargs="+",
-        choices=["flash", "pro", "lite"],
+        choices=["flash", "pro", "lite", "flash-3"],
         help="Specific models to run (default: all models)"
     )
     
@@ -226,6 +243,14 @@ Examples:
         nargs="+",
         choices=["structured", "unstructured"],
         help="Specific modes to run (default: both modes)"
+    )
+
+    parser.add_argument(
+        "--code-execution-modes",
+        nargs="+",
+        choices=["enabled", "disabled", "both"],
+        default=["both"],
+        help="Code execution modes to test (default: both)"
     )
     
     parser.add_argument(
@@ -239,7 +264,13 @@ Examples:
         action="store_true",
         help="Show what would be run without actually running"
     )
-    
+
+    parser.add_argument(
+        "--yes", "-y",
+        action="store_true",
+        help="Skip confirmation prompt"
+    )
+
     args = parser.parse_args()
     
     # Show summary and exit if requested
@@ -252,7 +283,8 @@ Examples:
     model_map = {
         "flash": "gemini-2.5-flash",
         "pro": "gemini-2.5-pro",
-        "lite": "gemini-2.5-flash-lite-preview-06-17"
+        "lite": "gemini-2.5-flash-lite-preview-06-17",
+        "flash-3": "gemini-3-flash-preview"
     }
     
     if args.models:
@@ -262,28 +294,39 @@ Examples:
     
     # Build mode list
     if args.modes:
-        modes = [{"flag": "--structured-output" if m == "structured" else "", "name": m} 
+        modes = [{"flag": "--structured-output" if m == "structured" else "", "name": m}
                 for m in args.modes]
     else:
         modes = STRUCTURED_OPTIONS
-    
+
+    # Build code execution options list
+    if "both" in args.code_execution_modes:
+        code_exec_options = CODE_EXECUTION_OPTIONS
+    elif "enabled" in args.code_execution_modes:
+        code_exec_options = [{"flag": "--code-execution", "name": "code_exec"}]
+    elif "disabled" in args.code_execution_modes:
+        code_exec_options = [{"flag": "", "name": "no_code_exec"}]
+    else:
+        code_exec_options = CODE_EXECUTION_OPTIONS
+
     # Build parameters
     params = {
         "max_images": args.max_images,
         "max_workers": args.max_workers
     }
-    
+
     # Calculate total runs
-    total_runs = sum(len(config["thinking_budgets"]) for config in selected_models.values()) * len(modes)
+    total_runs = sum(len(config["thinking_budgets"]) for config in selected_models.values()) * len(modes) * len(code_exec_options)
     
     # Print configuration
     print("🚀 MATRIX EVALUATION CONFIGURATION")
     print("="*50)
     print(f"📊 Models: {', '.join(selected_models.keys())}")
     print(f"📋 Modes: {', '.join([m['name'] for m in modes])}")
+    print(f"🔧 Code Execution: {', '.join([c['name'] for c in code_exec_options])}")
     print(f"📷 Images per run: {params['max_images']}")
     print(f"🔧 Workers: {params['max_workers']}")
-    print(f"🧠 Thinking budgets: per model (flash/lite: 0,1024; pro: 1024)")
+    print(f"🧠 Thinking budgets: per model (flash/lite/flash-3: 0,1024; pro: 1024)")
     print(f"🎯 Total runs: {total_runs}")
     
     if args.dry_run:
@@ -291,26 +334,33 @@ Examples:
         for model_name, model_config in selected_models.items():
             for thinking_budget in model_config["thinking_budgets"]:
                 for mode in modes:
-                    cmd = [
-                        "python", "coco_eval_script.py",
-                        "--model", model_name,
-                        "--max-images", str(params["max_images"]),
-                        "--max-workers", str(params["max_workers"]),
-                        "--thinking-budget", str(thinking_budget)
-                    ]
-                    if mode["flag"]:
-                        cmd.append(mode["flag"])
-                    print(f"  {' '.join(cmd)}")
+                    for code_exec in code_exec_options:
+                        cmd = [
+                            "uv", "run", "python", "coco_eval_script.py",
+                            "--model", model_name,
+                            "--max-images", str(params["max_images"]),
+                            "--max-workers", str(params["max_workers"]),
+                            "--thinking-budget", str(thinking_budget)
+                        ]
+                        if mode["flag"]:
+                            cmd.append(mode["flag"])
+                        if code_exec["flag"]:
+                            cmd.append(code_exec["flag"])
+                        print(f"  {' '.join(cmd)}")
         return
     
     # Ask for confirmation
     print(f"\n⚠️  This will run {total_runs} evaluations.")
     print(f"⏱️  Estimated time: {total_runs * params['max_images'] * 0.33 / 60:.1f} minutes")
-    response = input("Continue? (y/N): ").strip().lower()
-    
-    if response not in ['y', 'yes']:
-        print("❌ Cancelled by user")
-        return
+
+    if not args.yes:
+        response = input("Continue? (y/N): ").strip().lower()
+
+        if response not in ['y', 'yes']:
+            print("❌ Cancelled by user")
+            return
+    else:
+        print("✅ Auto-confirmed with --yes flag")
     
     # Run the matrix
     print(f"\n🎯 Starting matrix evaluation at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -321,24 +371,29 @@ Examples:
     for model_name, model_config in selected_models.items():
         for thinking_budget in model_config["thinking_budgets"]:
             for mode in modes:
-                current_run += 1
-                print(f"\n📊 Progress: {current_run}/{total_runs}")
-                
-                result = run_evaluation(model_name, thinking_budget, mode, params)
-                run_results.append({
-                    "model": model_name,
-                    "thinking_budget": thinking_budget,
-                    "mode": mode["name"],
-                    "result": result
-                })
-                
-                if result["status"] == "interrupted":
-                    print("⚠️  Matrix evaluation interrupted by user")
+                for code_exec in code_exec_options:
+                    current_run += 1
+                    print(f"\n📊 Progress: {current_run}/{total_runs}")
+
+                    result = run_evaluation(model_name, thinking_budget, mode, code_exec, params)
+                    run_results.append({
+                        "model": model_name,
+                        "thinking_budget": thinking_budget,
+                        "mode": mode["name"],
+                        "code_execution": code_exec["name"],
+                        "result": result
+                    })
+
+                    if result["status"] == "interrupted":
+                        print("⚠️  Matrix evaluation interrupted by user")
+                        break
+
+                if run_results and run_results[-1]["result"]["status"] == "interrupted":
                     break
-            
+
             if run_results and run_results[-1]["result"]["status"] == "interrupted":
                 break
-        
+
         if run_results and run_results[-1]["result"]["status"] == "interrupted":
             break
     
