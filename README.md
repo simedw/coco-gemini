@@ -2,7 +2,7 @@
 
 How good is Gemini at object detection? We benchmark Google's Gemini models on COCO 2017 validation set to measure their zero-shot object detection capabilities.
 
-**Latest:** Gemini 3 Flash with Agentic Vision code execution achieves **0.451 mAP**, outperforming all previous models including the larger 3-pro-preview. Code execution provides a validated **10-16% quality improvement** over standard inference.
+**Latest:** Gemini 4 Argon (`models/gemini-4-argon`) achieves **0.504 mAP** and **0.694 AP@0.5** on 1,000 COCO validation images, with structured output and no code execution. All 1,000 images completed successfully. Earlier runs used different random subsets.
 
 COCO 2017 Val is a classic dataset for object detection benchmarking. While the annotations aren't perfect, it provides a good baseline for comparing model capabilities.
 
@@ -140,6 +140,35 @@ Results are automatically collected and displayed in a comparison table with thi
 
 ## Results
 
+## Gemini 4 Argon (1000 images)
+
+On October 13, 2026, we evaluated `models/gemini-4-argon` with structured output, a thinking budget of 1,024, image preprocessing enabled, 10 workers, and no code execution.
+
+| Metric | Result |
+|--------|--------|
+| mAP (IoU 0.50:0.95) | **0.504** |
+| AP@0.5 | **0.694** |
+| AP@0.75 | 0.547 |
+| AP small | 0.224 |
+| AP medium | 0.493 |
+| AP large | 0.699 |
+| Successful images | 1000/1000 |
+| Total predictions | 9,680 |
+| Inference wall time | 564.9s (9m 25s) |
+
+The earlier Gemini 3 Flash run with the same output mode, thinking budget, and no code execution scored 0.403 mAP. Each run used a different random 1,000-image subset, so these scores are not a comparison on identical images.
+
+Rerun with:
+
+```bash
+uv run python coco_eval_script.py \
+  --model models/gemini-4-argon \
+  --max-images 1000 \
+  --max-workers 10 \
+  --thinking-budget 1024 \
+  --structured-output
+```
+
 ## 🚀 Gemini 3 Flash with Agentic Vision (1000 images)
 
 The new `gemini-3-flash-preview` model supports code execution tools that enable iterative image analysis through a Think-Act-Observe loop. We evaluated the impact of this feature across multiple configurations.
@@ -212,16 +241,17 @@ uv run python coco_eval_script.py \
   --max-images 1000
 ```
 
-### Comparison with Gemini 2.5/3 Models
+### Comparison with Gemini 2.5, 3, and 4 models
 
 | Model | Best mAP | AP@0.5 | Images | Config | Notes |
 |-------|----------|--------|--------|--------|-------|
-| **3-flash-preview (code exec)** | **0.451** | **0.636** | 1000 | think=1024, code=yes | 🏆 Best quality |
+| **4-argon** | **0.504** | **0.694** | 1000 | think=1024, structured, code=no | Highest recorded mAP |
+| 3-flash-preview (code exec) | 0.451 | 0.636 | 1000 | think=1024, code=yes | Best Gemini 3 Flash result |
 | 3-pro-preview | 0.407 | 0.582 | 5000 | think=1024, structured | Slower, more expensive |
 | 2.5-pro | 0.340 | 0.517 | 5000 | think=1024, structured | Legacy model |
 | 2.5-flash | 0.261 | 0.417 | 5000 | think=0, unstructured | Legacy model |
 
-**Key Insight:** The new Gemini 3 Flash with code execution **outperforms all previous models**, including the larger 3-pro-preview, while being faster and more cost-effective.
+Gemini 4 Argon has the highest recorded mAP in this benchmark. The runs differ in sample selection, image count, and configuration, so the table does not isolate the effect of model choice.
 
 **Claim Validation:** Google's claimed 5-10% quality improvement from Agentic Vision code execution is **validated and exceeded** — we measured **10-16% improvement** in real-world COCO object detection tasks.
 
